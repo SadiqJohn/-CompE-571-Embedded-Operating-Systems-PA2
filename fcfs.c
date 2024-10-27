@@ -6,7 +6,6 @@
 #include <string.h> 
 #include <time.h> 
 #include <signal.h>
-#include <sys/time.h>
 
 /************************************************************************************************ 
 		These DEFINE statements represent the workload size of each task and 
@@ -17,11 +16,6 @@
 #define WORKLOAD2 50000
 #define WORKLOAD3 25000
 #define WORKLOAD4 10000
-
-#define QUANTUM1 1000
-#define QUANTUM2 1000
-#define QUANTUM3 1000
-#define QUANTUM4 1000
 
 /************************************************************************************************ 
 					DO NOT CHANGE THE FUNCTION IMPLEMENTATION
@@ -51,8 +45,9 @@ void myfunction(int param){
 int main(int argc, char const *argv[])
 {
 	pid_t pid1, pid2, pid3, pid4;
-	struct timeval start_time[4], end_time[4];
+	struct timespec start_time[4], end_time[4];
 	long response_times[4];
+	long context_switch_times[3];  // Array to store context switch times between processes
 
 	// Create the first process and immediately stop it
 	pid1 = fork();
@@ -98,42 +93,61 @@ int main(int argc, char const *argv[])
 	// Start each process in order and wait for it to complete before moving to the next
 
 	// Start process 1 and record its response time
-	gettimeofday(&start_time[0], NULL);  // Capture start time
+	clock_gettime(CLOCK_MONOTONIC, &start_time[0]);  // Capture start time
 	kill(pid1, SIGCONT);                 // Start process 1
 	waitpid(pid1, NULL, 0);              // Wait until process 1 completes
-	gettimeofday(&end_time[0], NULL);    // Capture end time
+	clock_gettime(CLOCK_MONOTONIC, &end_time[0]);    // Capture end time
 
 	// Start process 2 and record its response time
-	gettimeofday(&start_time[1], NULL);  // Capture start time
+	clock_gettime(CLOCK_MONOTONIC, &start_time[1]);  // Capture start time
 	kill(pid2, SIGCONT);                 // Start process 2
 	waitpid(pid2, NULL, 0);              // Wait until process 2 completes
-	gettimeofday(&end_time[1], NULL);    // Capture end time
+	clock_gettime(CLOCK_MONOTONIC, &end_time[1]);    // Capture end time
+
+	// Calculate context switch time between process 1 and 2
+	context_switch_times[0] = (start_time[1].tv_sec - end_time[0].tv_sec) * 1000000000L + (start_time[1].tv_nsec - end_time[0].tv_nsec);
 
 	// Start process 3 and record its response time
-	gettimeofday(&start_time[2], NULL);  // Capture start time
+	clock_gettime(CLOCK_MONOTONIC, &start_time[2]);  // Capture start time
 	kill(pid3, SIGCONT);                 // Start process 3
 	waitpid(pid3, NULL, 0);              // Wait until process 3 completes
-	gettimeofday(&end_time[2], NULL);    // Capture end time
+	clock_gettime(CLOCK_MONOTONIC, &end_time[2]);    // Capture end time
+
+	// Calculate context switch time between process 2 and 3
+	context_switch_times[1] = (start_time[2].tv_sec - end_time[1].tv_sec) * 1000000000L + (start_time[2].tv_nsec - end_time[1].tv_nsec);
 
 	// Start process 4 and record its response time
-	gettimeofday(&start_time[3], NULL);  // Capture start time
+	clock_gettime(CLOCK_MONOTONIC, &start_time[3]);  // Capture start time
 	kill(pid4, SIGCONT);                 // Start process 4
 	waitpid(pid4, NULL, 0);              // Wait until process 4 completes
-	gettimeofday(&end_time[3], NULL);    // Capture end time
+	clock_gettime(CLOCK_MONOTONIC, &end_time[3]);    // Capture end time
+
+	// Calculate context switch time between process 3 and 4
+	context_switch_times[2] = (start_time[3].tv_sec - end_time[2].tv_sec) * 1000000000L + (start_time[3].tv_nsec - end_time[2].tv_nsec);
 
 	/************************************************************************************************
 		- Scheduling code ends here
 	************************************************************************************************/
 
-	// Calculate response times in microseconds and print the average
+	// Calculate response times in nanoseconds and print the average
 	long total_response_time = 0;
 	for (int i = 0; i < 4; i++) {
-		response_times[i] = (end_time[i].tv_sec - start_time[i].tv_sec) * 1000000L + (end_time[i].tv_usec - start_time[i].tv_usec);
+		response_times[i] = (end_time[i].tv_sec - start_time[i].tv_sec) * 1000000000L + (end_time[i].tv_nsec - start_time[i].tv_nsec);
 		total_response_time += response_times[i];
-		printf("Response time for process %d: %ld microseconds\n", i + 1, response_times[i]);
+		printf("Response time for process %d: %ld nanoseconds\n", i + 1, response_times[i]);
 	}
 	long average_response_time = total_response_time / 4;
-	printf("Average response time: %ld microseconds\n", average_response_time);
+	printf("Average response time: %ld nanoseconds\n", average_response_time);
+
+	// Calculate total and average context switch overhead
+	long total_context_switch_time = 0;
+	for (int i = 0; i < 3; i++) {
+		total_context_switch_time += context_switch_times[i];
+		printf("Context switch time between process %d and %d: %ld nanoseconds\n", i + 1, i + 2, context_switch_times[i]);
+	}
+	long average_context_switch_time = total_context_switch_time / 3;
+	printf("Total context switch overhead: %ld nanoseconds\n", total_context_switch_time);
+	printf("Average context switch time per switch: %ld nanoseconds\n", average_context_switch_time);
 
 	return 0;
 }
